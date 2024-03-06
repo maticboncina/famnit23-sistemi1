@@ -1,0 +1,3 @@
+MOV D, 0x0003
+MOV A, [D]
+HLT
