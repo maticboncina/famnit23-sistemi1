@@ -1,0 +1,7 @@
+MOV A,2
+OUT 7
+
+MOV A,3 
+OUT 7
+
+HLT
