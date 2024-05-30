@@ -17,18 +17,19 @@ keyA: DB 0
 keyD: DB 0
 keySpace: DB 0
 
+; interrupt za keyboard in vSync
 isr:
     PUSH A ; The ISR will use register A.
     PUSH B ;
-    IN 1              ; Which interrupt event occured?
-    CMP A, 4          ; Was it vSync?
-    JNE isrKeyboard
-    MOVB [vSync], 1    ; If yes, set the vSync flag.
+    IN 1              ; Which interrupt event occured? keyboard ali vsync ali "oboje" :)))))
+    CMP A, 4          ; Was it vSync? Če ni 4 je keyboard, če je 4 je vsync se izvede spodaj
+    JNE isrKeyboard 
+    MOVB [vSync], 1   ; If yes, set the vSync flag.
     MOV A, 4          ; vSync interrupt number.
     OUT 2             ; The vSync interrupt has been serviced.
-    JMP iret
+    JMP iret 
 
-isrKeyboard:
+isrKeyboard: ; če ni vSync je keyboard
     IN 5 ; Get the keyboard status .
     AND A, 1111b
     CMP A, 1 ; Is it the keydown event ?
@@ -36,7 +37,7 @@ isrKeyboard:
     CMP A, 2 ; Keyup event
     JE handleKeyUp
 
-    ; če sta a in d pritisnjena !!hkrati!!, se ne zgodi nič.
+    ; če sta a in d pritisnjena !!hkrati!!, se ne zgodi nič. In fluashamo
     IN 6
     MOVB [keyA], 0 
     MOVB [keyD], 0
@@ -50,6 +51,8 @@ handleKeyDown:
     
 handleKeyUp:
     MOVB BL, 0
+
+; odvisno kaj je shranimo notri aka odvisno ker keystate up/down
 
 comparison:
 	IN 6 ; kateri gumbič (a/d)?
@@ -74,27 +77,29 @@ handleSpace:
     JNE dontDoAction
     CALL doAction
 
+; ko držimo space, preskoči action, zato da se ne loopa ponovni zagon žogice
 dontDoAction:
     JMP keysDone
 
 keysDone:
-    MOV A, 1 ; Keyboard interrupt mask .
-    OUT 2 ; Keyboard has been serviced .
+    MOV A, 1 ; Keyboard interrupt mask
+    OUT 2 ; Keyboard has been serviced
 
 iret:
     POP B
     POP A ; Restore the register A.
     IRET ; Return from ISR .
 
-doAction: ; 
+doAction: ; resetira žogico in jo spusti
 	PUSH A ; pushamo, da ne povozimo registra A
     MOV A, 0
     MOVB AL, [ballLocked] ; locked --> se premika z igralcem. Space jo spusti
     CMPB AL, 1
     JNE actionNotLocked 
-	MOVB [ballLocked], 0 ;; resetiral, premaknil, smer pravi kot navzgor
+	MOVB [ballLocked], 0 ; resetiral, premaknil, smer pravi kot navzgor
     JMP actionDone
 
+; če ni locked bo ob spacu jo bo lockal na igralca otherwise bo spusti žogico
 actionNotLocked:
 	MOVB [ballLocked], 1
     MOVB [ballVelX], 0
@@ -141,7 +146,7 @@ tileDefinitions: ;; sprites motherfucker
 ; -----------------------------------------------------------------------------
 loadVramTiles:
     MOV C, tileDefinitions
-    MOV D, 0x9E00 ; Our custom tiles start at the VRAM address 0x9E00.
+    MOV D, 0x9E00 ; VRAM lokacija za teksture naših spritov
 
 loadVramTilesLoop:
     CMP D, 0x9F40 ; Our custom tiles end at the VRAM address 0x9F3F.
@@ -157,6 +162,7 @@ loadVramTilesLoop:
 loadVramTilesReturn:
     RET
 
+; bo premikalo levo desno
 handleUserInput:
 	MOVB AH, [posX]
     MOVB CH, 0
@@ -164,19 +170,19 @@ handleUserInput:
     MOVB BL, [keyA]
     CMPB BL, 0
     JE skipA:
-    SUBB AH, CL
+    SUBB AH, CL ; naredi premik levo
 
 skipA:
     MOVB BL, [keyD]
     CMPB BL, 0
-    JE movFinal:
-    ADDB AH, CL
+    JE movFinal: ; če je kliknen se ta jump ne izvede 
+    ADDB AH, CL ; če je pritisnjeno d, naredi premik desno
 
 movFinal:
-	MOVB [posX], AH
+	MOVB [posX], AH ; shrani novo pozicijo
     RET
     
-drawPlayer: 
+drawPlayer: ; nucamo dva spritesa za igralca
     MOV A, 0xA308
     OUT 8
     MOVB AH, [posX]
@@ -190,11 +196,11 @@ drawPlayer:
     OUT 9 
     RET
     
-handleBall:
+handleBall: ; premik žogice
 	MOV A, 0
     MOVB AL, [ballLocked]
     CMPB AL, 1
-    JNE notLocked:
+    JNE notLocked: ; if locked gre žogica na igralca
     MOVB AH, [posX]
     ADDB AH, 8
     MOVB [ballPosX], AH
@@ -202,30 +208,30 @@ handleBall:
     JMP doneHandling
 
 notLocked:
-	MOVB BH, [ballVelXPos]
+	MOVB BH, [ballVelXPos] ;; desno/levo 
 	MOVB AH, [ballPosX]
     CMPB BH, 1
-    JE ballXPos
-    SUBB AH, [ballVelX]
+    JE ballXPos 
+    SUBB AH, [ballVelX]; že kle če je < gre levo
     JMP ballXDone
 
 ballXPos:
-	ADDB AH, [ballVelX]
+	ADDB AH, [ballVelX] ;; če je > gre desno
 
 ballXDone:
     MOVB BL, [ballVelYPos]
     MOVB AL, [ballPosY]
     CMPB BL, 1
 	JNE ballYNeg
-	SUBB AL, [ballVelY]
+	SUBB AL, [ballVelY] ;; to gre gor. Pri meni je na vrhu, ker assembly izrisuje iz vrha gor
     JMP ballYDone
 
 ballYNeg:
-    ADDB AL, [ballVelY]
+    ADDB AL, [ballVelY] ;; isto kot x samo obratno. 
 
 ballYDone:
     MOVB [ballPosX], AH
-    MOVB [ballPosY], AL
+    MOVB [ballPosY], AL ;; da ne skače gor dol
 
 doneHandling:
 	RET
@@ -236,9 +242,9 @@ handleBallWallCollision:
     CMPB AL, 8
     JNB ballNAWall
     MOVB AL, 8
-    MOVB [ballVelYPos], 0
+    MOVB [ballVelYPos], 0 ; invertamo y smer
 
-ballNAWall:
+ballNAWall: ;; not above
 	CMPB AL, 232
     JNA ballNBWall
     MOVB AL, 232
@@ -247,19 +253,19 @@ ballNAWall:
     MOVB [ballVelX], 0
     MOVB [ballLocked], 1
 
-ballNBWall:
+ballNBWall: ;; not below wall
 	CMPB AH, 8
     JNB ballNLWall
     MOVB AH, 8
     MOVB [ballVelXPos], 1
 
-ballNLWall:
+ballNLWall: ;; not left
 	CMPB AH, 232
     JNA ballNRWall
     MOVB AH, 232
     MOVB [ballVelXPos], 0
 
-ballNRWall:
+ballNRWall: ;; not right
 	MOVB [ballPosY], AL
     MOVB [ballPosX], AH
     RET
@@ -272,7 +278,7 @@ incScore:
     ADDB AH, 1
     MOVB AL, 0
 
-skipFoldOver:
+skipFoldOver: ;; ker dajemo lower in higher
 	MOV [score], A
 	RET
     
@@ -283,7 +289,7 @@ handleBallPlayerBrickCollisions:
     MOVB BH, [posX]
     MOVB BL, [posY]
     SUBB BL, AL
-    CMPB BL, 16
+    CMPB BL, 16 ;comparaomo oddaljenost žoge in s tem določimo smer
     JNB dontCheckFPlayer
     ADDB BH, 24
     CMPB AH, BH
@@ -291,15 +297,16 @@ handleBallPlayerBrickCollisions:
     SUBB BH, 32
     CMPB AH, BH
     JB dontCheckFPlayer
+    ; racket razdelimo na 5 dele. sl l s d sd
     SUBB AH, BH
     CMPB AH, 5
     JNB checkSecondRacketStage
-    MOVB [ballVelXPos], 0
+    MOVB [ballVelXPos], 0 ; pove žogi v katero smer naj gre ob odboju. Tuki bo 6 levo 1 gor
    	MOVB [ballVelX], 6
     MOVB [ballVelY], 1
- 	JMP stopCheckRacket
+ 	JMP stopCheckRacket 
 
-checkSecondRacketStage:
+checkSecondRacketStage: ; gre 4 levo 4 gor
 	CMPB AH, 11
     JNB checkThirdRacketStage
     MOVB [ballVelXPos], 0
@@ -307,14 +314,14 @@ checkSecondRacketStage:
     MOVB [ballVelY], 4
  	JMP stopCheckRacket
 
-checkThirdRacketStage:
+checkThirdRacketStage: ;; kao na sredini :) - gre 6 gor 0 deno/levo
 	CMPB AH, 15
     JNB checkFourthRacketStage
    	MOVB [ballVelX], 0
     MOVB [ballVelY], 6
  	JMP stopCheckRacket
 
-checkFourthRacketStage:
+checkFourthRacketStage: ; in obratno od 2nd
 	CMPB AH, 21
     JNB checkFifthRacketStage
     MOVB [ballVelXPos], 1
@@ -322,15 +329,15 @@ checkFourthRacketStage:
     MOVB [ballVelY], 4
  	JMP stopCheckRacket
 
-checkFifthRacketStage:
+checkFifthRacketStage: ; in obratno od 1st
 	MOVB [ballVelXPos], 1
    	MOVB [ballVelX], 6
     MOVB [ballVelY], 1
 
-stopCheckRacket:
+stopCheckRacket: ;; odboj v y. Za vse namesto posamezno
 	MOVB [ballVelYPos], 1
 
-dontCheckFPlayer:
+dontCheckFPlayer: ; checkamo cornernerje in pote odbijemo v pravilno smer
     ; brick collision
     ; left top corner
    	MOV A, 0
@@ -394,7 +401,7 @@ doneLeftUpCorner:
     MOVB BL, AL
     MOVB AL, [ballPosX]
     ADDB AL, 16
-    DIV 16
+    DIV 16  ;; spremeni v koordinatni sistem tilemapsov. Dobimo tko da x/y delimo 16 in pol damo x krat 2
     MUL 2
     MOVB AH, BL
     MOV B, A
@@ -518,7 +525,7 @@ doneLeftBottomCorner:
     CMP A, 0xF3FF
     JE rightBottomCornerLeft
     CMP A, 0xF4FF
-    JNE stopCheckingBridoneRightBottomCorner
+    JNE stopCheckingBridoneRightBottomCorner ;; če ne najde nobenga blocka
     MOV A, B
     OUT 8
     MOV A, 0
@@ -540,6 +547,7 @@ rightBottomCornerLeft:
     OUT 8
     MOV A, 0
     OUT 9
+
 skipRightBottomCorner:
 	CALL incScore
 	MOV A, 0
@@ -560,7 +568,7 @@ stopCheckingBridoneRightBottomCorner:
 stopCheckingBrickColl:
     RET
 
-drawBall: 
+drawBall: ; premakne sploh ne riše
     MOV A, 0xA310
     OUT 8
     MOVB AH, [ballPosX]
@@ -568,7 +576,7 @@ drawBall:
     OUT 9 
     RET
 
-drawDegub: 
+drawDegub: ;; ne rabimo samo debug, ampak si ne upam zbrisat
     MOVB AH, [keyA]
     ADDB AH, 0x30
     MOVB AL, [keyD]
@@ -584,7 +592,7 @@ drawDegub:
     MOV [0x1006], A
     RET
 
-handleRacketCollisions:
+handleRacketCollisions: ;; da ne gre preveč levo ali desno in ga ustavimo
 	; border collisions
     MOVB AH, [posX]
     CMPB AH, 5
@@ -598,7 +606,7 @@ colNotRight:
 	MOVB [posX], AH
     RET
   
-doMap:
+doMap: ;; do map
     MOVB BH, 1
     MOVB BL, 1
     MOVB CL, 0
